@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wall #-}
 module Lib
     ( two
     ) where
@@ -15,13 +16,13 @@ execute s pos
   | S.index s pos == 99 = s 
   | S.index s pos == 1  = execute (S.adjust'
                                   (const $ S.index s si1 + 
-                                         S.index s si2)
+                                           S.index s si2)
                                   si3
                                   s)
                                   (pos + 4) -- add
   | S.index s pos == 2  = execute (S.adjust'
                                   (const $ S.index s si1 * 
-                                         S.index s si2)
+                                           S.index s si2)
                                   si3
                                   s)
                                   (pos + 4) -- multiply

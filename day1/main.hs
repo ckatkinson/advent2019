@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wall #-}
 module Main where
 
 getLines :: FilePath -> IO [Int]
@@ -10,8 +11,9 @@ answer1 ss = sum $
 
 fuelCalc :: Int -> Int
 fuelCalc f
-  | f `div` 3 - 2 <= 0 = 0
-  | otherwise          = (f `div` 3 - 2) + fuelCalc (f `div` 3 - 2)
+  | op <= 0   = 0
+  | otherwise = op + fuelCalc op
+  where op = f `div` 3 - 2
 
 answer2 :: [Int] -> Int
 answer2 ss = sum $
