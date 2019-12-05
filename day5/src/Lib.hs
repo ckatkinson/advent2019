@@ -37,6 +37,7 @@ opCode ins = case ins `mod` 100 of
                3  -> IN
                4  -> OUT
                99 -> HLT
+               _ -> error "hmmm"
 
 numParams :: OpCode -> Int
 numParams oc = case oc of
@@ -74,17 +75,19 @@ execute mem ptr
   | currentoc == HLT = return mem
   | currentoc == ADD = execute (S.adjust'
                                   (const $ head args + (args !! 1))
-                                  (args !! 2)
+                                  (fst (currentPArgs !! 2))
                                   mem)
                                   shift
   | currentoc == MUL = execute (S.adjust'
                                   (const $ head args * (args !! 1))
-                                  (args !! 2)
+                                  (fst (currentPArgs !! 2))
                                   mem)
                                   shift
   | currentoc == IN  = do x <- readInt
+                          print args
                           execute (S.adjust' (const x)
-                                             (head args)
+                                             (memLookup mem (ptr + 1))
+                                             --(head args)
                                              mem)
                                   shift
   | currentoc == OUT = do print $ head args
@@ -95,7 +98,7 @@ execute mem ptr
         currentParams = parModes ptrStar
         currentPArgs  = zip [ memLookup mem (ptr + d) | d <- [1 .. numArgs] ] currentParams
         args          = map (getArg mem) currentPArgs
-        shift = movePointer currentoc ptr
+        shift         = movePointer currentoc ptr
 
 mem :: Memory
 mem = S.fromList [11101,1,1,1,99]
@@ -109,6 +112,7 @@ mem2 = S.fromList [4,2,99]
 
 
 
-five :: IO ()
-five = putStrLn "Hi"
+five :: IO Memory
+five = do mem <- getInput "./input"
+          execute mem 0
 
