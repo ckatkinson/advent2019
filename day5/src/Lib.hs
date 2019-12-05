@@ -71,9 +71,9 @@ memLookup mem ptr = fromMaybe 0 (S.lookup ptr mem)
 readInt :: IO Int
 readInt = read <$> getLine
 
-execute :: Memory -> Pointer -> IO Memory
+execute :: Memory -> Pointer -> IO ()
 execute mem ptr
-  | currentoc == HLT = return mem
+  | currentoc == HLT = print "We did it!"
   | currentoc == ADD = execute (S.adjust'
                                   (const $ head args + (args !! 1))
                                   storeAt
@@ -85,7 +85,6 @@ execute mem ptr
                                   mem)
                                   shift
   | currentoc == IN  = do x <- readInt
-                          print args
                           execute (S.adjust' (const x)
                                              (memLookup mem (ptr + 1))
                                              mem)
@@ -114,7 +113,9 @@ execute mem ptr
         shift         = movePointer currentoc ptr
         storeAt       = memLookup mem (ptr + 3)
 
-five :: IO Memory
+
+five :: IO ()
 five = do mem <- getInput "./input"
+          print "Type 1 for part 1. Type 5 for part 2"
           execute mem 0
 
