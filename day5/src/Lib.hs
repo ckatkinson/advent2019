@@ -1,10 +1,9 @@
--- {-# OPTIONS_GHC -Wall #-}
+{-# OPTIONS_GHC -Wall #-}
 module Lib
     ( five
     ) where
 
 import Data.Char (digitToInt)
-import Data.List (reverse)
 import Data.Maybe
 import Data.List.Split (splitOneOf)
 import Data.Sequence (Seq)
@@ -14,21 +13,17 @@ getInput :: FilePath -> IO (Seq Int)
 getInput path = do contents <- readFile path
                    return (S.fromList $ map read $ splitOneOf ", " contents)
 
-data OpCode  = ADD | MUL | IN | OUT | HLT deriving (Show, Eq)
+data OpCode  = ADD | MUL | IN | OUT | JMT | JMF | LTN | EQU | HLT deriving (Show, Eq)
 data ParMode = POS | IMM deriving (Show, Eq)
 type Pointer = Int
-type OpInst  = Int -- Think something like 01002, encoding opcode and parmode
+type OpInst  = Int 
 type ParArg  = (Int, ParMode)
 type Arg     = Int
 type Memory  = Seq Int
 
 movePointer :: OpCode -> Pointer -> Pointer
 movePointer oc ptr = let shift = numParams oc + 1
-                     in case oc of
-                          ADD -> ptr + shift
-                          MUL -> ptr + shift
-                          IN  -> ptr + shift
-                          OUT -> ptr + shift
+                     in ptr + shift
 
 opCode :: OpInst -> OpCode
 opCode ins = case ins `mod` 100 of
@@ -36,8 +31,12 @@ opCode ins = case ins `mod` 100 of
                2  -> MUL
                3  -> IN
                4  -> OUT
+               5  -> JMT
+               6  -> JMF
+               7  -> LTN
+               8  -> EQU
                99 -> HLT
-               _ -> error "hmmm"
+               _  -> error "Not a valid opCode"
 
 numParams :: OpCode -> Int
 numParams oc = case oc of
@@ -45,15 +44,17 @@ numParams oc = case oc of
                  MUL -> 3
                  IN  -> 1
                  OUT -> 1
+                 JMT -> 2
+                 JMF -> 2
+                 LTN -> 3
+                 EQU -> 3
                  HLT -> 0
 
 parMode :: Int -> ParMode
 parMode 0 = POS
 parMode 1 = IMM
+parMode _ = error "Not a valid parameter mode"
 
--- The list of parmodes is usually too long in the else case. Plan is to zip it
--- together with the list of arguments so that the extra 0's at the end get
--- dropped.
 parModes :: OpInst -> [ParMode]
 parModes ins = take (numParams $ opCode ins) $
                map (parMode . digitToInt)  
@@ -75,23 +76,35 @@ execute mem ptr
   | currentoc == HLT = return mem
   | currentoc == ADD = execute (S.adjust'
                                   (const $ head args + (args !! 1))
-                                  (fst (currentPArgs !! 2))
+                                  storeAt
                                   mem)
                                   shift
   | currentoc == MUL = execute (S.adjust'
                                   (const $ head args * (args !! 1))
-                                  (fst (currentPArgs !! 2))
+                                  storeAt
                                   mem)
                                   shift
   | currentoc == IN  = do x <- readInt
                           print args
                           execute (S.adjust' (const x)
                                              (memLookup mem (ptr + 1))
-                                             --(head args)
                                              mem)
                                   shift
   | currentoc == OUT = do print $ head args
                           execute mem shift
+  | currentoc == JMT = if head args /= 0
+                         then execute mem (last args)
+                         else execute mem shift 
+  | currentoc == JMF = if head args == 0
+                         then execute mem (last args)
+                         else execute mem shift 
+  | currentoc == LTN = if head args < args !! 1
+                         then execute (S.adjust' (const 1) storeAt mem) shift
+                         else execute (S.adjust' (const 0) storeAt mem) shift
+  | currentoc == EQU = if head args == args !! 1
+                         then execute (S.adjust' (const 1) storeAt mem) shift
+                         else execute (S.adjust' (const 0) storeAt mem) shift
+  | otherwise        = error "Syntax error or something"
   where ptrStar       = memLookup mem ptr
         currentoc     = opCode ptrStar
         numArgs       = numParams currentoc
@@ -99,18 +112,7 @@ execute mem ptr
         currentPArgs  = zip [ memLookup mem (ptr + d) | d <- [1 .. numArgs] ] currentParams
         args          = map (getArg mem) currentPArgs
         shift         = movePointer currentoc ptr
-
-mem :: Memory
-mem = S.fromList [11101,1,1,1,99]
-
-mem1 :: Memory
-mem1 = S.fromList [3,0,11101,1,1,1,99]
-
-mem2 :: Memory
-mem2 = S.fromList [4,2,99]
-
-
-
+        storeAt       = memLookup mem (ptr + 3)
 
 five :: IO Memory
 five = do mem <- getInput "./input"
