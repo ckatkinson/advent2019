@@ -1,11 +1,14 @@
-{-# OPTIONS_GHC -Wall #-}
+-- {-# OPTIONS_GHC -Wall #-}
+{-# LANGUAGE RecordWildCards #-}
 module IntCode
     ( execute
     , getInput
     , Memory
     , Buffer
     , Pointer
-    ) where
+    , Machine (..)
+    )
+    where
 
 import Data.Char (digitToInt)
 import Data.Maybe
@@ -25,6 +28,12 @@ type ParArg  = (Int, ParMode)
 type Arg     = Int
 type Memory  = Seq Int
 type Buffer  = [Int]
+
+data Machine = Machine
+                 { memory  :: Memory
+                 , pointer :: Pointer
+                 , buffer  :: Buffer 
+                 }
 
 movePointer :: OpCode -> Pointer -> Pointer
 movePointer oc ptr = let shift = numParams oc + 1
@@ -73,41 +82,44 @@ getArg mem (arg, par) = case par of
 memLookup :: Memory -> Pointer -> Int
 memLookup mem ptr = fromMaybe 0 (S.lookup ptr mem)
 
-execute :: Memory -> Pointer -> Buffer -> Buffer
-execute mem ptr buff
-  | currentoc == HLT = buff
-  | currentoc == ADD = execute (S.adjust'
+execute :: Machine -> Machine
+execute mach
+  | currentoc == HLT = mach
+  | currentoc == ADD = execute (Machine (S.adjust'
                                   (const $ head args + (args !! 1))
                                   storeAt
                                   mem)
                                   shift
-                                  buff
-  | currentoc == MUL = execute (S.adjust'
+                                  buff)
+  | currentoc == MUL = execute (Machine (S.adjust'
                                   (const $ head args * (args !! 1))
                                   storeAt
                                   mem)
                                   shift
-                                  buff
-  | currentoc == IN  = execute (S.adjust' (const (head buff))
+                                  buff)
+  | currentoc == IN  = execute (Machine (S.adjust' (const (head buff))
                                           (memLookup mem (ptr + 1))
                                           mem)
                                   shift
-                                  (tail buff)
-  | currentoc == OUT = execute mem shift (buff ++ pure (head args))
+                                  (tail buff))
+  | currentoc == OUT = execute (Machine mem shift (buff ++ pure (head args)))
   | currentoc == JMT = if head args /= 0
-                         then execute mem (last args) buff
-                         else execute mem shift buff
+                         then execute (Machine mem (last args) buff)
+                         else execute (Machine mem shift buff)
   | currentoc == JMF = if head args == 0
-                         then execute mem (last args) buff
-                         else execute mem shift buff
+                         then execute (Machine mem (last args) buff)
+                         else execute (Machine mem shift buff)
   | currentoc == LTN = if head args < args !! 1
-                         then execute (S.adjust' (const 1) storeAt mem) shift buff
-                         else execute (S.adjust' (const 0) storeAt mem) shift buff
+                         then execute (Machine (S.adjust' (const 1) storeAt mem) shift buff)
+                         else execute (Machine (S.adjust' (const 0) storeAt mem) shift buff)
   | currentoc == EQU = if head args == args !! 1
-                         then execute (S.adjust' (const 1) storeAt mem) shift buff
-                         else execute (S.adjust' (const 0) storeAt mem) shift buff
-  | otherwise        = error "Syntax error or something"
-  where ptrStar       = memLookup mem ptr
+                         then execute (Machine (S.adjust' (const 1) storeAt mem) shift buff)
+                         else execute (Machine (S.adjust' (const 0) storeAt mem) shift buff)
+  | otherwise        = error "Syntax error or something else horrible"
+  where mem           = memory mach
+        ptr           = pointer mach
+        buff          = buffer mach
+        ptrStar       = memLookup mem ptr
         currentoc     = opCode ptrStar
         numArgs       = numParams currentoc
         currentParams = parModes ptrStar
@@ -116,3 +128,68 @@ execute mem ptr buff
         shift         = movePointer currentoc ptr
         storeAt       = memLookup mem (ptr + 3)
 
+data AmpCycle = AmpCycle 
+                 { aMachine :: Machine
+                 , bMachine :: Machine
+                 , cMachine :: Machine
+                 , dMachine :: Machine
+                 , eMachine :: Machine
+                 , ampOrder :: [AmpCycle -> Machine]
+                 }
+
+
+
+initOrder :: [AmpCycle -> Machine]
+initOrder = cycle [aMachine, bMachine, cMachine, dMachine, eMachine]
+
+
+-- Using recordwildcards: need for cyExecute
+-- modifyMem :: (Mem -> Mem) -> State -> State
+-- modifyMem f State {..} = State { mem = f mem, .. }
+
+cyExecute :: AmpCycle -> AmpCycle
+cyExecute ac
+  | currentoc == HLT  = ac
+  | currentoc == ADD  = cyExecute (Machine (S.adjust'
+                                   (const $ head args + (args !! 1))
+                                   storeAt
+                                   mem)
+                                   shift
+                                   buff)
+  | currentoc == MUL  = cyExecute (Machine (S.adjust'
+                                   (const $ head args * (args !! 1))
+                                   storeAt
+                                   mem)
+                                   shift
+                                   buff)
+  | currentoc == IN   = cyExecute (Machine (S.adjust' (const (head buff))
+                                           (memLookup mem (ptr + 1))
+                                           mem)
+                                   shift
+                                   (tail buff))
+  | currentoc == OUT  = cyExecute (Machine mem shift (buff ++ pure (head args)))
+  | currentoc == JMT  = if head args /= 0
+                          then cyExecute (Machine mem (last args) buff)
+                          else cyExecute (Machine mem shift buff)
+  | currentoc == JMF  = if head args == 0
+                          then cyExecute (Machine mem (last args) buff)
+                          else cyExecute (Machine mem shift buff)
+  | currentoc == LTN  = if head args < args !! 1
+                          then cyExecute (Machine (S.adjust' (const 1) storeAt mem) shift buff)
+                          else cyExecute (Machine (S.adjust' (const 0) storeAt mem) shift buff)
+  | currentoc == EQU  = if head args == args !! 1
+                          then cyExecute (Machine (S.adjust' (const 1) storeAt mem) shift buff)
+                          else cyExecute (Machine (S.adjust' (const 0) storeAt mem) shift buff)
+  | otherwise         = error "Syntax error or something else horrible"
+  where currentAmp    = head ampOrder ac
+        mem           = memory currentAmp
+        ptr           = pointer currentAmp
+        buff          = buffer currentAmp
+        ptrStar       = memLookup mem ptr
+        currentoc     = opCode ptrStar
+        numArgs       = numParams currentoc
+        currentParams = parModes ptrStar
+        currentPArgs  = zip [ memLookup mem (ptr + d) | d <- [1 .. numArgs] ] currentParams
+        args          = map (getArg mem) currentPArgs
+        shift         = movePointer currentoc ptr
+        storeAt       = memLookup mem (ptr + 3)
