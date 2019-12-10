@@ -1,4 +1,4 @@
--- {-# OPTIONS_GHC -Wall #-}
+{-# OPTIONS_GHC -Wall #-}
 module Lib
     ( seven
     ) where
@@ -33,18 +33,30 @@ data AmpCycle = AmpCycle { machines :: Seq Machine, aPointer :: AmpPointer } der
 
 
 -- Give memory and list of phases. Get list of Machines.
+-- Also will give the input 0 to the first machine (so it's input buffer should
+-- be [p, 0]
 initializeMachines :: Memory -> [Phase] -> Seq Machine
 initializeMachines mem phs = S.fromList $ map (\ p -> Machine mem 0 (pure p) 0) phs
+
+addInput :: Int -> Seq Machine -> Seq Machine
+addInput n sms = S.update 0 withInput sms
+  where frstMach  = sms `S.index` 0
+        mem       = memory frstMach
+        buff      = buffer frstMach
+        withInput = Machine mem 0 (buff ++ [n]) 0
 
 passBuffer :: Machine -> Machine -> Machine
 passBuffer xMach yMach = Machine mem ptr buff rel
   where mem = memory yMach
         ptr = pointer yMach
-        buff = buffer xMach
+        buff = buffer yMach ++ buffer xMach
         rel = relBase yMach
 
 currentMach :: AmpCycle -> Machine
 currentMach ac = machines ac `S.index` aPointer ac
+
+flushBuffer :: Machine -> Machine
+flushBuffer (Machine mem ptr _ rel) = Machine mem ptr [] rel
 
 stepAmpCycle :: AmpCycle -> AmpCycle
 stepAmpCycle ac
@@ -60,21 +72,25 @@ stepAmpCycle ac
           newM = passBuffer stepCurr nextM
           update :: Machine -> Machine
           update x 
-            | x == currM = stepCurr
+            | x == currM = flushBuffer stepCurr
             | x == nextM = newM
             | otherwise  = x
 
 executeAC :: AmpCycle -> AmpCycle
 executeAC ac
-  -- | nextOpCode lastM == HLT = ac
   | nextOpCode (currentMach ac) == HLT = ac
-  | otherwise               = executeAC (stepAmpCycle ac)
-    where lastM = (machines ac) `S.index` (S.length (machines ac) - 1)
+  | otherwise                          = executeAC (stepAmpCycle ac)
           
+ampCycleOut :: AmpCycle -> Int
+ampCycleOut ac = head $ fmap buffer (machines $ executeAC ac) `S.index` 0
+
+answer2 :: Memory -> Int
+answer2 mem = maximum $ map (ampCycleOut . ac) (permutations [5..9])
+  where ac perm = AmpCycle (addInput 0 $ initializeMachines mem perm) 0
 
 seven :: IO ()
 seven = do mem <- getInput "./input"
-           --print $ answer1 mem
-           let ac = AmpCycle (initializeMachines mem [5,6,7,8,9]) 0
-           --print $ fmap buffer $ machines $ stepAmpCycle ac
-           print $ fmap buffer $ machines $ executeAC ac
+           putStrLn "Part 1:"
+           print $ answer1 mem
+           putStrLn "Part 2:"
+           print $ answer2 mem
