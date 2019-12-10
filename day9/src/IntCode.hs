@@ -1,4 +1,4 @@
--- {-# OPTIONS_GHC -Wall #-}
+{-# OPTIONS_GHC -Wall #-}
 module IntCode
     ( execute
     , getInput
@@ -89,7 +89,7 @@ memLookup mem ptr = fromMaybe 0 (S.lookup ptr mem)
 
 memWrite :: Memory -> Int -> Int -> Memory
 memWrite mem val loc
-  | loc > memsize = S.adjust' ( const val ) loc (mem >< zeros)
+  | loc >= memsize = S.adjust' ( const val ) loc (mem >< zeros)
   | otherwise     = S.adjust' ( const val ) loc mem
     where zeros   = S.fromList (replicate (loc - memsize + 2) 0)
           memsize = S.length mem
@@ -98,27 +98,17 @@ execute :: Machine -> Machine
 execute mach
   | currentoc == HLT = mach
   | currentoc == ADD = execute (Machine (memWrite mem (head args + (args !! 1))
-                                                  storeAt)
+                                                  loc)
                                                   shift
                                                   buff
                                                   rel)
   | currentoc == MUL = execute (Machine (memWrite mem (head args * (args !! 1))
-                                                  storeAt)
+                                                  loc)
                                                   shift
                                                   buff
                                                   rel)
-  | currentoc == IN  =  if snd (head currentPArgs) == REL
-                          then execute (Machine (memWrite mem (head buff)
-                                        (rel + fst (head currentPArgs)))
-                                         shift
-                                         (tail buff) rel)
-                          else if snd (head currentPArgs) == POS
-                                 then execute (Machine (memWrite mem (head buff)
-                                         storeAt)
-                                         shift
-                                         (tail buff) rel)
-                                 else execute (Machine (memWrite mem (head buff)
-                                        (ptr + numArgs))
+  | currentoc == IN  = execute (Machine (memWrite mem (head buff)
+                                        loc)
                                         shift
                                         (tail buff) rel)
   | currentoc == OUT = execute (Machine mem shift (buff ++ pure (head args)) rel)
@@ -129,14 +119,14 @@ execute mach
                          then execute (Machine mem (last args) buff rel)
                          else execute (Machine mem shift buff rel)
   | currentoc == LTN = if head args < args !! 1
-                         then execute (Machine (memWrite mem 1 storeAt) 
+                         then execute (Machine (memWrite mem 1 loc) 
                                          shift buff rel)
-                         else execute (Machine (memWrite mem 0 storeAt) 
+                         else execute (Machine (memWrite mem 0 loc) 
                                          shift buff rel)
   | currentoc == EQU = if head args == args !! 1
-                         then execute (Machine (memWrite mem 1 storeAt) 
+                         then execute (Machine (memWrite mem 1 loc) 
                                          shift buff rel)
-                         else execute (Machine (memWrite mem 0 storeAt) 
+                         else execute (Machine (memWrite mem 0 loc) 
                                          shift buff rel)
   | currentoc == AJR = execute (Machine mem shift buff (rel + head args))
   | otherwise        = error "Syntax error or something else horrible"
@@ -151,26 +141,8 @@ execute mach
         currentPArgs  = zip [ memLookup mem (ptr + d) | d <- [1 .. numArgs] ] currentParams
         args          = map (getArg mach) currentPArgs
         shift         = movePointer currentoc ptr
-        storeAt       = memLookup mem (ptr + numArgs)
+        loc = case snd (last currentPArgs) of
+                  REL -> rel + fst (last currentPArgs)
+                  POS -> fst (last currentPArgs)
+                  IMM -> fst (last currentPArgs)
 
--- t1 = Machine (S.fromList [109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99])
-             -- 0 [] 0
-t1 = Machine (S.fromList [109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99])
-             0 [] 0
-
--- this works
-t2 = Machine (S.fromList [1102,34915192,34915192,7,4,7,99,0]) 0 [] 0
-
---this works
-t3 = Machine (S.fromList [104,1125899906842624,99]) 0 [] 0
-
---this works
-t4 = Machine (S.fromList [204, 5, 99, 5555555]) 0 [] (-2)
-
-t5 = Machine (S.fromList [1001, 100, 1, 100, 4, 100, 99]) 0 [] (-2)
-
--- 203 is failing
-t6 = Machine (S.fromList [203, 4, 4, 5, 99, 5555555]) 0 [666] 1
-
---
-t7 = Machine (S.fromList [203, 1, 99]) 0 [666] 2
