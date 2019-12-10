@@ -80,6 +80,9 @@ rayDirection (b1,b2) ray
 sortedRays :: Point -> Set Ray -> [Ray]
 sortedRays base rays = sortBy (compare `on` rayDirection base) (S.toList rays)
 
+-- There are more than 200 rays, so we can just look at the 200th entry. Luckily
+-- there is no wraparound, so we don't even need to vaporize any asteroids for a
+-- second lap!
 answer2 :: [Point] -> Ray
 answer2 pts = sortedRays base rays !! 199
   where base = baseLoc pts
