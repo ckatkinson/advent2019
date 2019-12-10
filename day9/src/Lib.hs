@@ -1,49 +1,40 @@
 -- {-# OPTIONS_GHC -Wall #-}
 module Lib
-    ( eight
+    ( nine
     ) where
 
-import Data.Char (digitToInt)
-import Data.Function
-import Data.List
-import Data.List.Split 
-
-getInput :: FilePath -> IO [Int]
-getInput path = do contents <- readFile path
-                   return (map digitToInt $ init contents)
-
-type Image = [Int]
-type Layers = [[Int]]
-type Width = Int
-type Height = Int
-
-getLayers :: Width -> Height -> Image -> Layers
-getLayers w h im = chunksOf (w * h) im
-
-count :: Int -> Image -> Int
-count n im = length $ filter (== n) im
-
-answer1 :: Image -> Int
-answer1 im = ones * twos
-  where layers = getLayers 25 6 im
-        mlayer = minimumBy (compare `on` count 0) layers
-        ones = count 1 mlayer
-        twos = count 2 mlayer
-
-makeImage :: Layers -> Image
-makeImage ls = map (head . dropWhile (==2)) $ transpose ls
-
-makePbm :: Width -> Height -> Image -> IO ()
-makePbm w h im = writeFile "./message.pbm" pbm 
-  where pbm = "P1 " ++ show w ++ " " ++ show h ++ " " ++ unwords (map show im)
-
-answer2 :: Image -> IO ()
-answer2 im = makePbm 25 6 $ makeImage $ getLayers 25 6 im
+import IntCode
+import qualified Data.Sequence as S
 
 
-eight :: IO ()
-eight = do xs <- getInput "./input"
-           print $ answer1 xs
-           answer2 xs
+
+-- t1 = Machine (S.fromList [109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99])
+             -- 0 [] 0
+t1 = Machine (S.fromList [109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99])
+             0 [] 0
+
+-- this works
+t2 = Machine (S.fromList [1102,34915192,34915192,7,4,7,99,0]) 0 [] 0
+
+--this works
+t3 = Machine (S.fromList [104,1125899906842624,99]) 0 [] 0
+
+--this works
+t4 = Machine (S.fromList [204, 5, 99, 5555555]) 0 [] (-2)
+
+t5 = Machine (S.fromList [1001, 100, 1, 100, 4, 100, 99]) 0 [] (-2)
+
+-- 203 is failing
+t6 = Machine (S.fromList [203, 4, 4, 5, 99, 5555555]) 0 [666] 1
+
+nine :: IO ()
+nine = do xs <- getInput "./input"
+          print $ execute (Machine xs 0 [1] 0)
+          -- print $ execute t1
+          -- print $ execute t2
+          -- print $ execute t3
+          -- print $ execute t4
+          -- print $ buffer $ execute t6
+           
            
 

@@ -12,7 +12,7 @@ module IntCode
 import Data.Char (digitToInt)
 import Data.Maybe
 import Data.List.Split (splitOneOf)
-import Data.Sequence (Seq)
+import Data.Sequence (Seq, (><))
 import qualified Data.Sequence as S
 
 getInput :: FilePath -> IO (Seq Int)
@@ -79,36 +79,48 @@ parModes ins = take (numParams $ opCode ins) $
 
 getArg :: Machine -> ParArg -> Arg
 getArg mach (arg, par) = case par of
-                          POS -> S.index mem arg
+                          POS -> fromMaybe 0 (S.lookup arg mem)
                           IMM -> arg
-                          REL -> S.index mem (relBase mach)
+                          REL -> fromMaybe 0 (S.lookup (arg + relBase mach) mem)
   where mem = memory mach
 
 memLookup :: Memory -> Pointer -> Int
 memLookup mem ptr = fromMaybe 0 (S.lookup ptr mem)
 
+memWrite :: Memory -> Int -> Int -> Memory
+memWrite mem val loc
+  | loc > memsize = S.adjust' ( const val ) loc (mem >< zeros)
+  | otherwise     = S.adjust' ( const val ) loc mem
+    where zeros   = S.fromList (replicate (loc - memsize + 2) 0)
+          memsize = S.length mem
+
 execute :: Machine -> Machine
 execute mach
   | currentoc == HLT = mach
-  | currentoc == ADD = execute (Machine (S.adjust'
-                                  (const $ head args + (args !! 1))
-                                  storeAt
-                                  mem)
-                                  shift
-                                  buff
-                                  rel)
-  | currentoc == MUL = execute (Machine (S.adjust'
-                                  (const $ head args * (args !! 1))
-                                  storeAt
-                                  mem)
-                                  shift
-                                  buff
-                                  rel)
-  | currentoc == IN  = execute (Machine (S.adjust' (const (head buff))
-                                          (memLookup mem (ptr + 1))
-                                          mem)
-                                  shift
-                                  (tail buff) rel)
+  | currentoc == ADD = execute (Machine (memWrite mem (head args + (args !! 1))
+                                                  storeAt)
+                                                  shift
+                                                  buff
+                                                  rel)
+  | currentoc == MUL = execute (Machine (memWrite mem (head args * (args !! 1))
+                                                  storeAt)
+                                                  shift
+                                                  buff
+                                                  rel)
+  | currentoc == IN  =  if snd (head currentPArgs) == REL
+                          then execute (Machine (memWrite mem (head buff)
+                                        (rel + fst (head currentPArgs)))
+                                         shift
+                                         (tail buff) rel)
+                          else if snd (head currentPArgs) == POS
+                                 then execute (Machine (memWrite mem (head buff)
+                                         storeAt)
+                                         shift
+                                         (tail buff) rel)
+                                 else execute (Machine (memWrite mem (head buff)
+                                        (ptr + numArgs))
+                                        shift
+                                        (tail buff) rel)
   | currentoc == OUT = execute (Machine mem shift (buff ++ pure (head args)) rel)
   | currentoc == JMT = if head args /= 0
                          then execute (Machine mem (last args) buff rel)
@@ -117,14 +129,14 @@ execute mach
                          then execute (Machine mem (last args) buff rel)
                          else execute (Machine mem shift buff rel)
   | currentoc == LTN = if head args < args !! 1
-                         then execute (Machine (S.adjust' (const 1) storeAt mem) 
+                         then execute (Machine (memWrite mem 1 storeAt) 
                                          shift buff rel)
-                         else execute (Machine (S.adjust' (const 0) storeAt mem) 
+                         else execute (Machine (memWrite mem 0 storeAt) 
                                          shift buff rel)
   | currentoc == EQU = if head args == args !! 1
-                         then execute (Machine (S.adjust' (const 1) storeAt mem) 
+                         then execute (Machine (memWrite mem 1 storeAt) 
                                          shift buff rel)
-                         else execute (Machine (S.adjust' (const 0) storeAt mem) 
+                         else execute (Machine (memWrite mem 0 storeAt) 
                                          shift buff rel)
   | currentoc == AJR = execute (Machine mem shift buff (rel + head args))
   | otherwise        = error "Syntax error or something else horrible"
@@ -139,5 +151,26 @@ execute mach
         currentPArgs  = zip [ memLookup mem (ptr + d) | d <- [1 .. numArgs] ] currentParams
         args          = map (getArg mach) currentPArgs
         shift         = movePointer currentoc ptr
-        storeAt       = memLookup mem (ptr + 3)
+        storeAt       = memLookup mem (ptr + numArgs)
 
+-- t1 = Machine (S.fromList [109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99])
+             -- 0 [] 0
+t1 = Machine (S.fromList [109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99])
+             0 [] 0
+
+-- this works
+t2 = Machine (S.fromList [1102,34915192,34915192,7,4,7,99,0]) 0 [] 0
+
+--this works
+t3 = Machine (S.fromList [104,1125899906842624,99]) 0 [] 0
+
+--this works
+t4 = Machine (S.fromList [204, 5, 99, 5555555]) 0 [] (-2)
+
+t5 = Machine (S.fromList [1001, 100, 1, 100, 4, 100, 99]) 0 [] (-2)
+
+-- 203 is failing
+t6 = Machine (S.fromList [203, 4, 4, 5, 99, 5555555]) 0 [666] 1
+
+--
+t7 = Machine (S.fromList [203, 1, 99]) 0 [666] 2
