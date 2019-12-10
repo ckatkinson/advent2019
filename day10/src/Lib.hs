@@ -29,52 +29,34 @@ asteroids sps = map fst $ filter (\ x -> snd x == Asteroid) sps
 distance :: Point -> Point -> Int
 distance (x1,y1) (x2,y2) = abs (x1 - x2) + abs (y1 - y2)
 
-pointsOnLine :: Point -> Point -> [Point] -> Set Point
-pointsOnLine (x1,y1) (x2,y2) pts = S.fromList $ filter check pts
-  where check (x,y) = (y - y1) * (x2 - x1) == (y2 - y1) * (x - x1)
+pointsOnRay :: Point -> Point -> [Point] -> Set Point
+pointsOnRay (x1,y1) (x2,y2) pts = S.fromList $ filter check pts
+  where check (x,y) = (y - y1) * (x2 - x1) == (y2 - y1) * (x - x1) &&
+                      (x - x1) * (x2 - x1) + (y - y1) * (y2 - y1) > 0
 
-linesAtPoint :: Point -> [Point] -> Set (Set Point)
-linesAtPoint p pts = S.filter (\x -> S.size x > 1) $
-                     S.fromList $ 
-                     map (\ x -> pointsOnLine p x pts) (filter (/=p) pts)
+raysAtPoint :: Point -> [Point] -> Set (Set Point)
+raysAtPoint p pts = S.fromList $ 
+                     map (\ x -> pointsOnRay p x pts) (filter (/=p) pts)
+-- raysAtPoint p pts = S.filter (\x -> S.size x > 1) $
+                     -- S.fromList $
+                     -- map (\ x -> pointsOnRay p x pts) (filter (/=p) pts)
 
 asteroidOnLine :: Point -> Point -> [Point] -> Bool
-asteroidOnLine p1 p2 pts = length (pointsOnLine p1 p2 pts) - 1 > 0
+asteroidOnLine p1 p2 pts = length (pointsOnRay p1 p2 pts) - 1 > 0
 
 numAsteroidsSeen :: Point -> [Point] -> Int
-numAsteroidsSeen base pts = S.size (linesAtPoint base pts)
+numAsteroidsSeen base pts = S.size (raysAtPoint base pts)
 
 answer1 :: [Point] -> Int
-answer1 pts = maximum $ map (\x -> numAsteroidsSeen x pts) pts
+answer1 pts = maximum $ map (`numAsteroidsSeen` pts) pts
 
 
 ten :: IO ()
-ten = do xs <- getInput "./testinput"
+ten = do xs <- getInput "./input"
          let as = asteroids xs
+         putStrLn "Part 1:"
          print $ answer1 as
         
 
 
--- ...###.#########.####
--- .######.###.###.##...
--- ####.########.#####.#
--- ########.####.##.###.
--- ####..#.####.#.#.##..
--- #.################.##
--- ..######.##.##.#####.
--- #.####.#####.###.#.##
--- #####.#########.#####
--- #####.##..##..#.#####
--- ##.######....########
--- .#######.#.#########.
--- .#.##.#.#.#.##.###.##
--- ######...####.#.#.###
--- ###############.#.###
--- #.#####.##..###.##.#.
--- ##..##..###.#.#######
--- #..#..########.#.##..
--- #.#.######.##.##...##
--- .#.##.#####.#..#####.
--- #.#.##########..#.##.
---
 
