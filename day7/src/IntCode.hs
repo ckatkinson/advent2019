@@ -1,6 +1,4 @@
 -- {-# OPTIONS_GHC -Wall #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE NamedFieldPuns #-}
 module IntCode
     ( execute
     , getInput
@@ -8,21 +6,24 @@ module IntCode
     , Buffer
     , Pointer
     , Machine (..)
+    , OpCode (..)
+    , nextOpCode
+    , step
     )
     where
 
 import Data.Char (digitToInt)
 import Data.Maybe
 import Data.List.Split (splitOneOf)
-import Data.Sequence (Seq)
+import Data.Sequence (Seq, (><))
 import qualified Data.Sequence as S
 
 getInput :: FilePath -> IO (Seq Int)
 getInput path = do contents <- readFile path
                    return (S.fromList $ map read $ splitOneOf ", " contents)
 
-data OpCode  = ADD | MUL | IN | OUT | JMT | JMF | LTN | EQU | HLT deriving (Show, Eq)
-data ParMode = POS | IMM deriving (Show, Eq)
+data OpCode  = ADD | MUL | IN | OUT | JMT | JMF | LTN | EQU | HLT | AJR deriving (Show, Eq)
+data ParMode = POS | IMM | REL deriving (Show, Eq)
 type Pointer = Int
 type OpInst  = Int 
 type ParArg  = (Int, ParMode)
@@ -34,7 +35,8 @@ data Machine = Machine
                  { memory  :: Memory
                  , pointer :: Pointer
                  , buffer  :: Buffer 
-                 } deriving Show
+                 , relBase :: Int
+                 } deriving (Show, Eq)
 
 movePointer :: OpCode -> Pointer -> Pointer
 movePointer oc ptr = let shift = numParams oc + 1
@@ -50,6 +52,7 @@ opCode ins = case ins `mod` 100 of
                6  -> JMF
                7  -> LTN
                8  -> EQU
+               9  -> AJR -- adjust relative base
                99 -> HLT
                _  -> error "Not a valid opCode"
 
@@ -63,11 +66,18 @@ numParams oc = case oc of
                  JMF -> 2
                  LTN -> 3
                  EQU -> 3
+                 AJR -> 1
                  HLT -> 0
+
+nextOpCode :: Machine -> OpCode
+nextOpCode mach = opCode (memLookup mem ptr)
+  where mem = memory mach
+        ptr = pointer mach
 
 parMode :: Int -> ParMode
 parMode 0 = POS
 parMode 1 = IMM
+parMode 2 = REL
 parMode _ = error "Not a valid parameter mode"
 
 parModes :: OpInst -> [ParMode]
@@ -75,130 +85,76 @@ parModes ins = take (numParams $ opCode ins) $
                map (parMode . digitToInt)  
                    (drop 2 $ reverse (show ins)) ++ replicate 3 POS
 
-getArg :: Memory -> ParArg -> Arg
-getArg mem (arg, par) = case par of
-                          POS -> S.index mem arg
+getArg :: Machine -> ParArg -> Arg
+getArg mach (arg, par) = case par of
+                          POS -> fromMaybe 0 (S.lookup arg mem)
                           IMM -> arg
+                          REL -> fromMaybe 0 (S.lookup (arg + relBase mach) mem)
+  where mem = memory mach
 
 memLookup :: Memory -> Pointer -> Int
 memLookup mem ptr = fromMaybe 0 (S.lookup ptr mem)
 
+memWrite :: Memory -> Int -> Int -> Memory
+memWrite mem val loc
+  | loc >= memsize = S.adjust' ( const val ) loc (mem >< zeros)
+  | otherwise     = S.adjust' ( const val ) loc mem
+    where zeros   = S.fromList (replicate (loc - memsize + 2) 0)
+          memsize = S.length mem
+
 execute :: Machine -> Machine
 execute mach
+  | nextOpCode mach == HLT = mach
+  | otherwise              = execute $ step mach
+
+step :: Machine -> Machine
+step mach
   | currentoc == HLT = mach
-  | currentoc == ADD = execute (Machine (S.adjust'
-                                  (const $ head args + (args !! 1))
-                                  storeAt
-                                  mem)
-                                  shift
-                                  buff)
-  | currentoc == MUL = execute (Machine (S.adjust'
-                                  (const $ head args * (args !! 1))
-                                  storeAt
-                                  mem)
-                                  shift
-                                  buff)
-  | currentoc == IN  = execute (Machine (S.adjust' (const (head buff))
-                                          (memLookup mem (ptr + 1))
-                                          mem)
-                                  shift
-                                  (tail buff))
-  | currentoc == OUT = execute (Machine mem shift (buff ++ pure (head args)))
+  | currentoc == ADD = Machine (memWrite mem (head args + (args !! 1))
+                                                  loc)
+                                                  shift
+                                                  buff
+                                                  rel
+  | currentoc == MUL = Machine (memWrite mem (head args * (args !! 1))
+                                                  loc)
+                                                  shift
+                                                  buff
+                                                  rel
+  | currentoc == IN  = Machine (memWrite mem (head buff)
+                                        loc)
+                                        shift
+                                        (tail buff) rel
+  | currentoc == OUT = Machine mem shift (buff ++ pure (head args)) rel
   | currentoc == JMT = if head args /= 0
-                         then execute (Machine mem (last args) buff)
-                         else execute (Machine mem shift buff)
+                         then  Machine mem (last args) buff rel
+                         else  Machine mem shift buff rel
   | currentoc == JMF = if head args == 0
-                         then execute (Machine mem (last args) buff)
-                         else execute (Machine mem shift buff)
+                         then  Machine mem (last args) buff rel
+                         else  Machine mem shift buff rel
   | currentoc == LTN = if head args < args !! 1
-                         then execute (Machine (S.adjust' (const 1) storeAt mem) shift buff)
-                         else execute (Machine (S.adjust' (const 0) storeAt mem) shift buff)
+                         then  Machine (memWrite mem 1 loc) 
+                                         shift buff rel
+                         else  Machine (memWrite mem 0 loc) 
+                                         shift buff rel
   | currentoc == EQU = if head args == args !! 1
-                         then execute (Machine (S.adjust' (const 1) storeAt mem) shift buff)
-                         else execute (Machine (S.adjust' (const 0) storeAt mem) shift buff)
+                         then  Machine (memWrite mem 1 loc) 
+                                         shift buff rel
+                         else  Machine (memWrite mem 0 loc) 
+                                         shift buff rel
+  | currentoc == AJR =  Machine mem shift buff (rel + head args)
   | otherwise        = error "Syntax error or something else horrible"
   where mem           = memory mach
         ptr           = pointer mach
         buff          = buffer mach
+        rel           = relBase mach
         ptrStar       = memLookup mem ptr
         currentoc     = opCode ptrStar
         numArgs       = numParams currentoc
         currentParams = parModes ptrStar
         currentPArgs  = zip [ memLookup mem (ptr + d) | d <- [1 .. numArgs] ] currentParams
-        args          = map (getArg mem) currentPArgs
+        args          = map (getArg mach) currentPArgs
         shift         = movePointer currentoc ptr
-        storeAt       = memLookup mem (ptr + 3)
-
-data AmpCycle = AmpCycle 
-                 { aMachine :: Machine
-                 , bMachine :: Machine
-                 , cMachine :: Machine
-                 , dMachine :: Machine
-                 , eMachine :: Machine
-                 , ampOrder :: [AmpCycle -> Machine]
-                 }
-
-amps = [aMachine, bMachine, cMachine, dMachine, eMachine]
-
-currentMachine :: AmpCycle -> (AmpCycle -> Machine)
-currentMachine ac = head (ampOrder ac)
-
-
-
-initOrder :: [AmpCycle -> Machine]
-initOrder = cycle [aMachine, bMachine, cMachine, dMachine, eMachine]
-
-
-
-
--- Using recordwildcards: need for cyExecute
---
--- modifyMem :: (Mem -> Mem) -> State -> State
--- modifyMem f State {..} = State { mem = f mem, .. }
-
--- cyExecute :: AmpCycle -> AmpCycle
--- cyExecute ac
-  -- | currentoc == HLT  = ac
-  -- | currentoc == ADD  = cyExecute AmpCycle { aMachine = Machine (S.adjust' -- aMachine isn't right. Want currentMach.
-                                   -- (const $ head args + (args !! 1))
-                                   -- storeAt
-                                   -- mem)
-                                   -- shift
-                                   -- buff, .. }
-  -- | currentoc == MUL  = cyExecute AmpCycle { aMachine = Machine (S.adjust'
-                                   -- (const $ head args * (args !! 1))
-                                   -- storeAt
-                                   -- mem)
-                                   -- shift
-                                   -- buff, ..}
-  -- | currentoc == IN   = cyExecute (Machine (S.adjust' (const (head buff))
-                                           -- (memLookup mem (ptr + 1))
-                                           -- mem)
-                                   -- shift
-                                   -- (tail buff))
-  -- | currentoc == OUT  = cyExecute (Machine mem shift (buff ++ pure (head args)))
-  -- | currentoc == JMT  = if head args /= 0
-                          -- then cyExecute (Machine mem (last args) buff)
-                          -- else cyExecute (Machine mem shift buff)
-  -- | currentoc == JMF  = if head args == 0
-                          -- then cyExecute (Machine mem (last args) buff)
-                          -- else cyExecute (Machine mem shift buff)
-  -- | currentoc == LTN  = if head args < args !! 1
-                          -- then cyExecute (Machine (S.adjust' (const 1) storeAt mem) shift buff)
-                          -- else cyExecute (Machine (S.adjust' (const 0) storeAt mem) shift buff)
-  -- | currentoc == EQU  = if head args == args !! 1
-                          -- then cyExecute (Machine (S.adjust' (const 1) storeAt mem) shift buff)
-                          -- else cyExecute (Machine (S.adjust' (const 0) storeAt mem) shift buff)
-  -- | otherwise         = error "Syntax error or something else horrible"
-  -- where currentAmp    = currentMachine ac
-        -- mem           = memory $ currentAmp ac
-        -- ptr           = pointer $ currentAmp ac
-        -- buff          = buffer $ currentAmp ac
-        -- ptrStar       = memLookup mem ptr
-        -- currentoc     = opCode ptrStar
-        -- numArgs       = numParams currentoc
-        -- currentParams = parModes ptrStar
-        -- currentPArgs  = zip [ memLookup mem (ptr + d) | d <- [1 .. numArgs] ] currentParams
-        -- args          = map (getArg mem) currentPArgs
-        -- shift         = movePointer currentoc ptr
-        -- storeAt       = memLookup mem (ptr + 3)
+        loc = case snd (last currentPArgs) of
+                  REL -> rel + fst (last currentPArgs)
+                  POS -> fst (last currentPArgs)
+                  IMM -> fst (last currentPArgs)
