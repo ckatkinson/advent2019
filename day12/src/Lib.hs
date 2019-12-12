@@ -2,8 +2,11 @@ module Lib
     ( twelve
     ) where
 
+import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Map.Strict (Map, (!?))
+import qualified Data.Map.Strict as M
 
 input :: [Position]
 input =  [(7 , 10, 17),
@@ -119,12 +122,46 @@ stepsToRepeat sys seen enSeen
         newEnSeen = S.insert en enSeen
         en        = energy sys
 
--- Probably too slow, but let's try:
+
+-- This'll probably never terminate. Need to be smarter.
 answer2 :: System -> Int
 answer2 sys = stepsToRepeat sys S.empty S.empty
+
+-- Maybe just look at each Moon individually to find its period?
+
+type MoonNo = Int
+type Step = Int
+
+
+-- This isn't going to work...
+-- moonPeriod :: System -> MoonNo -> Map (Position, Velocity) Int -> Step -> (Int, Int)
+-- moonPeriod sys no rec step
+  -- | M.notMember (pos, vel) rec = moonPeriod newSystem no (M.insert (pos, vel) step rec) (step + 1)
+  -- | otherwise           = (step - startStep, startStep)
+  -- where pos = position (sys !! no)
+        -- vel = velocity (sys !! no)
+        -- startStep = fromMaybe (-1) (rec !? (pos, vel))
+        -- newSystem = stepSystem sys
+        -- velAtStartStep = iterate stepSystem sys !! startStep
+        -- velAtStep      = iterate stepSystem sys !! step
+
+
+moonPeriod :: System -> MoonNo -> Map (Position, Velocity) Int -> Step -> (Int, Int)
+moonPeriod sys no rec step
+   | M.member (pos, vel) rec  = (step - startStep, startStep)
+   | otherwise = moonPeriod newSystem no (M.insert (pos, vel) step rec) (step + 1)
+   where pos = position (sys !! no)
+         vel = velocity (sys !! no)
+         startStep = fromMaybe (-1) (rec !? (pos, vel))
+         newSystem = stepSystem sys
+         velAtStartStep = iterate stepSystem sys !! startStep
+         velAtStep      = iterate stepSystem sys !! step
+
+  
 
 twelve :: IO ()
 twelve = do putStrLn "Part 1:"
             print $ answer1 initSystem 1000
             putStrLn "Part 2:"
             print $ answer2 initSystem
+            -- print $ answerr initSystem
