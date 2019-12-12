@@ -104,14 +104,18 @@ answer1 sys n = energy $ iterate stepSystem sys !! n
 
 -- Part 2
 
-stepsToRepeat :: System -> Set Moon -> Int
+stepsToRepeat :: System -> Set System -> Int
 stepsToRepeat sys seen 
-  | S.null int = stepsToRepeat (stepSystem sys) newSeen
-  | otherwise  = S.size seen
-  where setSys = S.fromList sys
-        int    = S.intersection seen setSys
-        newSeen = S.union seen setSys
+  | S.notMember sys seen = stepsToRepeat (stepSystem sys) newSeen
+  | otherwise            = S.size seen
+  where newSeen = S.insert sys seen
+
+-- Probably too slow, but let's try:
+answer2 :: System -> Int
+answer2 sys = stepsToRepeat sys S.empty
 
 twelve :: IO ()
 twelve = do putStrLn "Part 1:"
             print $ answer1 initSystem 1000
+            putStrLn "Part 2:"
+            print $ answer2 initSystem
