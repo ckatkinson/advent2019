@@ -83,36 +83,45 @@ stepSystem sys = map (stepMoon sys) sys
 
 -- Energy
 
-potential :: Moon -> Int
+type Energy = Int
+
+potential :: Moon -> Energy
 potential moon = abs (xcoord pos) + abs (ycoord pos) + abs (zcoord pos)
   where pos = position moon
 
-kinetic :: Moon -> Int
+kinetic :: Moon -> Energy
 kinetic moon = abs (xcoord vel) + abs (ycoord vel) + abs (zcoord vel)
   where vel = velocity moon
 
-total :: Moon -> Int
+total :: Moon -> Energy
 total moon = potential moon * kinetic moon
 
-energy :: System -> Int
+energy :: System -> Energy
 energy sys = sum $ map total sys
 
 -- 
 
-answer1 :: System -> Int -> Int
+answer1 :: System -> Int -> Energy
 answer1 sys n = energy $ iterate stepSystem sys !! n
 
 -- Part 2
 
-stepsToRepeat :: System -> Set System -> Int
-stepsToRepeat sys seen 
-  | S.notMember sys seen = stepsToRepeat (stepSystem sys) newSeen
-  | otherwise            = S.size seen
-  where newSeen = S.insert sys seen
+-- Maybe faster? Just checking energy each time. Should bue quite a bit faster
+-- to check energy membership. However, we have to compute the energy each
+-- time...
+stepsToRepeat :: System -> Set System -> Set Energy -> Int
+stepsToRepeat sys seen enSeen
+  | S.notMember en enSeen = stepsToRepeat (stepSystem sys) newSeen newEnSeen
+  | S.member en enSeen    = if S.notMember sys seen
+                              then stepsToRepeat (stepSystem sys) newSeen newEnSeen
+                              else S.size seen
+  where newSeen   = S.insert sys seen
+        newEnSeen = S.insert en enSeen
+        en        = energy sys
 
 -- Probably too slow, but let's try:
 answer2 :: System -> Int
-answer2 sys = stepsToRepeat sys S.empty
+answer2 sys = stepsToRepeat sys S.empty S.empty
 
 twelve :: IO ()
 twelve = do putStrLn "Part 1:"
