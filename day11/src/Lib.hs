@@ -150,16 +150,21 @@ colorsToList hul = nums
        nums = map ( \ (_, c) -> colorToInt c ) lst
        unionWithKey f = merge preserveMissing preserveMissing (zipWithMatched f)
 
-makePbm :: Hull -> IO ()
-makePbm hull = writeFile "./message.pbm" pbm
+makePbm :: Hull -> String -> IO ()
+makePbm hull s = writeFile s pbm
   where pbm = "P1 " ++ show (hullHeight hull + 1) ++
               " " ++ show (hullWidth hull + 1) ++
               " " ++ unwords (map show im)
         im = colorsToList hull
 
 answer2 :: Memory -> IO ()
-answer2 mem = makePbm hul
+answer2 mem = makePbm hul "message.pbm"
   where hul = getHull $ runRobot $ initConfig2 mem
+
+picture1 :: Memory -> IO ()
+picture1 mem = makePbm hul "pt1.pbm"
+  where hul = getHull $ runRobot $ initConfig mem
+
 
 eleven :: IO ()
 eleven = do mem <- getInput "./input"
@@ -167,3 +172,4 @@ eleven = do mem <- getInput "./input"
             print $ answer1 mem
             putStrLn "Open message.pbm to see answer to part 2"
             answer2 mem
+            picture1 mem
