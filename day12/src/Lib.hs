@@ -1,3 +1,4 @@
+--{-# OPTIONS_GHC -Wall #-}
 module Lib
     ( twelve
     ) where
@@ -22,8 +23,27 @@ testinput =  [(-1, 0, 2),
 initSystem :: System
 initSystem = map (\ p -> Moon p (0,0,0)) input
 
+initX :: [MoonCpt]
+initX = map moonX initSystem
+
+initY :: [MoonCpt]
+initY = map moonY initSystem
+
+initZ :: [MoonCpt]
+initZ = map moonZ initSystem
+
+
 testinitSystem :: System
 testinitSystem = map (\ p -> Moon p (0,0,0)) testinput
+
+testinitX :: [MoonCpt]
+testinitX = map moonX testinitSystem
+
+testinitY :: [MoonCpt]
+testinitY = map moonY testinitSystem
+
+testinitZ :: [MoonCpt]
+testinitZ = map moonZ testinitSystem
 
 m1 = head testinitSystem
 m2 = testinitSystem !! 1
@@ -36,6 +56,7 @@ type Velocity = (Int, Int, Int)
 data Moon     = Moon { position :: Position
                      , velocity :: Velocity } deriving (Show, Eq, Ord)
 type System   = [Moon]
+type MoonCpt  = (Int, Int)
 
 -- Utility
 
@@ -51,6 +72,15 @@ ycoord (_, y, _) = y
 zcoord :: (Int, Int, Int) -> Int
 zcoord (_, _, z) = z
 
+moonX :: Moon -> MoonCpt
+moonX (Moon pos vel) = (xcoord pos, xcoord vel)
+
+moonY :: Moon -> MoonCpt
+moonY (Moon pos vel) = (ycoord pos, ycoord vel)
+
+moonZ :: Moon -> MoonCpt
+moonZ (Moon pos vel) = (zcoord pos, zcoord vel)
+
 --
 
 -- Dynamics
@@ -65,14 +95,18 @@ compGravChange x1 x2
 -- first argument.
 velGravChange :: Moon -> Moon -> Velocity
 velGravChange moon1 moon2 = dVel
-  where newVelocity  = velocity moon1 `addV` dVel
-        (x1, y1, z1) = position moon1
+  where (x1, y1, z1) = position moon1
         (x2, y2, z2) = position moon2
         dVel         = (compGravChange x1 x2, compGravChange y1 y2, compGravChange z1 z2)
 
+velGravChangeComp :: MoonCpt -> MoonCpt -> Int
+velGravChangeComp (x1,_) (x2,_) = compGravChange x1 x2
 
 applyGravityMoon :: System -> Moon -> Velocity
 applyGravityMoon sys moon = foldl addV (velocity moon) (map (velGravChange moon) sys)
+
+applyGravComp :: [MoonCpt] -> MoonCpt -> Int
+applyGravComp sys m@(_,v1) = foldl (+) v1 (map (velGravChangeComp m) sys)
 
 stepMoon :: System -> Moon -> Moon
 stepMoon sys moon = Moon newPos newVel
@@ -80,8 +114,16 @@ stepMoon sys moon = Moon newPos newVel
         vel    = velocity moon
         newPos = position moon `addV` newVel
 
+stepMoonCpt :: [MoonCpt] -> MoonCpt -> MoonCpt
+stepMoonCpt sys m@(x,_) = (newP, newV)
+  where newV = applyGravComp sys m
+        newP   = x + newV
+      
 stepSystem :: System -> System
 stepSystem sys = map (stepMoon sys) sys
+
+stepSystemCpt :: [MoonCpt] -> [MoonCpt]
+stepSystemCpt sys = map (stepMoonCpt sys) sys
 --
 
 -- Energy
@@ -124,14 +166,10 @@ stepsToRepeat sys seen enSeen
 
 
 -- This'll probably never terminate. Need to be smarter.
-answer2 :: System -> Int
-answer2 sys = stepsToRepeat sys S.empty S.empty
+answer2' :: System -> Int
+answer2' sys = stepsToRepeat sys S.empty S.empty
 
 -- Maybe just look at each Moon individually to find its period?
-
-type MoonNo = Int
-type Step = Int
-
 
 -- This isn't going to work...
 -- moonPeriod :: System -> MoonNo -> Map (Position, Velocity) Int -> Step -> (Int, Int)
@@ -146,17 +184,27 @@ type Step = Int
         -- velAtStep      = iterate stepSystem sys !! step
 
 
-moonPeriod :: System -> MoonNo -> Map (Position, Velocity) Int -> Step -> (Int, Int)
-moonPeriod sys no rec step
-   | M.member (pos, vel) rec  = (step - startStep, startStep)
-   | otherwise = moonPeriod newSystem no (M.insert (pos, vel) step rec) (step + 1)
-   where pos = position (sys !! no)
-         vel = velocity (sys !! no)
-         startStep = fromMaybe (-1) (rec !? (pos, vel))
-         newSystem = stepSystem sys
-         velAtStartStep = iterate stepSystem sys !! startStep
-         velAtStep      = iterate stepSystem sys !! step
+-- moonPeriod :: System -> MoonNo -> Map (Position, Velocity) Int -> Step -> (Int, Int)
+-- moonPeriod sys no rec step
+   -- | M.member (pos, vel) rec  = (step - startStep, startStep)
+   -- | otherwise = moonPeriod newSystem no (M.insert (pos, vel) step rec) (step + 1)
+   -- where pos = position (sys !! no)
+         -- vel = velocity (sys !! no)
+         -- startStep = fromMaybe (-1) (rec !? (pos, vel))
+         -- newSystem = stepSystem sys
+         -- velAtStartStep = iterate stepSystem sys !! startStep
+         -- velAtStep      = iterate stepSystem sys !! step
 
+compPeriod :: [MoonCpt] -> [MoonCpt] -> Int -> Int
+compPeriod mcs init step
+  | init /= stepSystemCpt mcs  = compPeriod (stepSystemCpt mcs) init (step + 1)
+  | otherwise           = step
+
+answer2 :: System -> Int
+answer2 sys = foldl lcm 1 [xp, yp, zp]
+  where xp = compPeriod (map moonX sys) (map moonX sys) 1
+        yp = compPeriod (map moonY sys) (map moonY sys) 1
+        zp = compPeriod (map moonZ sys) (map moonZ sys) 1
   
 
 twelve :: IO ()
