@@ -34,7 +34,8 @@ type Buffer  = [Int]
 data Machine = Machine
                  { memory  :: Memory
                  , pointer :: Pointer
-                 , buffer  :: Buffer 
+                 , inBuffer  :: Buffer 
+                 , outBuffer :: Buffer
                  , relBase :: Int
                  } deriving (Show, Eq)
 
@@ -113,39 +114,40 @@ step mach
   | currentoc == ADD = Machine (memWrite mem (head args + (args !! 1))
                                                   loc)
                                                   shift
-                                                  buff
+                                                  inBuff outBuff
                                                   rel
   | currentoc == MUL = Machine (memWrite mem (head args * (args !! 1))
                                                   loc)
                                                   shift
-                                                  buff
+                                                  inBuff outBuff
                                                   rel
-  | currentoc == IN  = Machine (memWrite mem (head buff)
+  | currentoc == IN  = Machine (memWrite mem (head inBuff)
                                         loc)
                                         shift
-                                        (tail buff) rel
-  | currentoc == OUT = Machine mem shift (buff ++ pure (head args)) rel
+                                        (tail inBuff) outBuff rel
+  | currentoc == OUT = Machine mem shift inBuff (outBuff ++ pure (head args)) rel
   | currentoc == JMT = if head args /= 0
-                         then  Machine mem (last args) buff rel
-                         else  Machine mem shift buff rel
+                         then  Machine mem (last args) inBuff outBuff rel
+                         else  Machine mem shift inBuff outBuff rel
   | currentoc == JMF = if head args == 0
-                         then  Machine mem (last args) buff rel
-                         else  Machine mem shift buff rel
+                         then  Machine mem (last args) inBuff outBuff rel
+                         else  Machine mem shift inBuff outBuff rel
   | currentoc == LTN = if head args < args !! 1
                          then  Machine (memWrite mem 1 loc) 
-                                         shift buff rel
+                                         shift inBuff outBuff rel
                          else  Machine (memWrite mem 0 loc) 
-                                         shift buff rel
+                                         shift inBuff outBuff rel
   | currentoc == EQU = if head args == args !! 1
                          then  Machine (memWrite mem 1 loc) 
-                                         shift buff rel
+                                         shift inBuff outBuff rel
                          else  Machine (memWrite mem 0 loc) 
-                                         shift buff rel
-  | currentoc == AJR =  Machine mem shift buff (rel + head args)
+                                         shift inBuff outBuff rel
+  | currentoc == AJR =  Machine mem shift inBuff outBuff (rel + head args)
   | otherwise        = error "Syntax error or something else horrible"
   where mem           = memory mach
         ptr           = pointer mach
-        buff          = buffer mach
+        inBuff        = inBuffer mach
+        outBuff        = outBuffer mach
         rel           = relBase mach
         ptrStar       = memLookup mem ptr
         currentoc     = opCode ptrStar
