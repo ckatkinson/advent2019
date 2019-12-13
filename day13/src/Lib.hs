@@ -50,8 +50,8 @@ displayBoard :: Board -> String
 displayBoard board = unlines $
                      map (map (charTile . snd)) $
                      chunksOf (boardWidth board) $
-                     M.toAscList $ 
-                     fixBoard board
+                     M.toAscList
+                     board
 
 -- A hack: for some reason, after stepping the machine, my board is missing the
 -- first few tiles. Let's try a hack!
@@ -63,25 +63,30 @@ fixBoard = M.union (M.fromList [((0,0), Wall), ((0,1), Wall), ((0,2), Wall)])
 
 answer1 :: Memory -> Int
 answer1 mem = M.size $ M.filter (== Block) board
-  where buff = buffer $ execute (Machine mem 1 [] 0)
+  where buff = outBuffer $ execute (Machine mem 0 [] [] 0)
         board = buildBoard buff
                  
 
 inputToBuffer :: Machine -> Buffer -> Machine
-inputToBuffer (Machine m p _ r) b = Machine m p b r
-
-flushBuffer :: Machine -> Machine
-flushBuffer (Machine m p _ r) = Machine m p [] r
+inputToBuffer (Machine m p _ ob r) b = Machine m p b ob r
  
-disp = putStrLn . displayBoard . buildBoard . buffer
+disp = putStrLn . displayBoard . buildBoard . outBuffer
+
+
+runGame :: Machine -> IO ()
+runGame mach   
+  | nextOpCode mach == IN = do disp mach;
+                                      runGame (step mach) 
+  | nextOpCode mach == HLT = disp mach
+  | otherwise              = runGame (step mach) 
 
 thirteen :: IO ()
 thirteen = do mem <- getInput "./input"
-              let machFreePlay  = Machine (S.update 0 2 mem) 0 [1] 0
-              let nextmach = execute machFreePlay 
-              let nnextmach = execute $ inputToBuffer nextmach [1]
-              disp nextmach
-              disp nnextmach
+              -- print $ answer1 mem
+              -- disp $ execute (Machine mem 0 [] [] 0)
+              let machFreePlay  = Machine (S.update 0 2 mem) 0 ([-1,-1,-1,-1,-1] ++ [0,0..]) [] 0
+              -- print $ take 3 $ reverse $ outBuffer $ execute machFreePlay
+              runGame $ machFreePlay
 
 
 -- The game didn't run because you didn't put in any quarters.  Unfortunately,
