@@ -60,12 +60,15 @@ answer1 mem = M.size $ M.filter (== Block) board
   where buff = outBuffer $ execute (Machine mem 0 [] [] 0)
         board = buildBoard buff
 
-findBall :: Board -> Board
-findBall = M.filter (==Ball)
+findBall :: Board -> Point
+findBall b = head $ M.keys $ M.filter (==Ball) b
+
+findPaddle :: Board -> Point
+findPaddle b = head $ M.keys $ M.filter (==Paddle) b
                  
 
-inputToBuffer :: Machine -> Buffer -> Machine
-inputToBuffer (Machine m p _ ob r) b = Machine m p b ob r
+inputBuffer :: Buffer -> Machine -> Machine
+inputBuffer b (Machine m p _ ob r) = Machine m p b ob r
  
 display = putStrLn . displayBoard . buildBoard . outBuffer
 sc = print . scoreBoard . outBuffer
@@ -74,20 +77,50 @@ flushOutput :: Machine -> Machine
 flushOutput (Machine m p ib ob r) = Machine m p ib [] r
 
 runGame :: Machine -> Board -> IO ()
-runGame mach board = do let nextoc = nextOpCode mach
-                        case nextoc of
-                          IN  -> do let changes = buildBoard $ outBuffer mach
-                                    let newB = updateBoard changes board
-                                    putStrLn $ displayBoard newB
-                                    -- print $ scoreBoard $ outBuffer mach
-                                    print $ outBuffer mach
-                                    let newMach = flushOutput $ step mach
-                                    runGame newMach newB
-                          HLT  -> do let changes = buildBoard $ outBuffer mach
-                                     let newB = updateBoard changes board
-                                     putStrLn $ displayBoard newB
-                                     -- print $ scoreBoard $ outBuffer mach
-                          _   -> runGame (step mach) board
+runGame mach board  
+  | nextOpCode mach == IN =  do putStrLn $ displayBoard newB
+                                runGame newMach newB
+  | nextOpCode mach == HLT = putStrLn $ displayBoard newB
+                                -- print $ scoreBoard $ outBuffer mach
+  | otherwise              = runGame (step mach) board
+    where changes = buildBoard $ outBuffer mach
+          newB = updateBoard changes board
+          move = movePaddle board newB
+          newMach = flushOutput $ step $ inputBuffer [move] mach
+
+-- runGame :: Machine -> Board -> IO ()
+-- runGame mach board = do let nextoc = nextOpCode mach
+                        -- case nextoc of
+                          -- IN  -> do let changes = buildBoard $ outBuffer mach
+                                    -- let newB = updateBoard changes board
+                                    -- putStrLn $ displayBoard newB
+                                    -- -- print $ scoreBoard $ outBuffer mach
+                                    -- -- print $ outBuffer mach
+                                    -- let move = movePaddle board newB
+                                    -- let newMach =  flushOutput $ step $ inputBuffer [move] mach
+                                    -- runGame newMach newB
+                          -- HLT  -> do let changes = buildBoard $ outBuffer mach
+                                     -- let newB = updateBoard changes board
+                                     -- putStrLn $ displayBoard newB
+                                     -- -- print $ scoreBoard $ outBuffer mach
+                          -- _   -> runGame (step mach) board
+
+testThing :: Int -> IO ()
+testThing n 
+  | n == 0  = putStrLn "Zero!"
+  | otherwise = do putStrLn "Subracting one!"
+                   let m = n - 1
+                   print m
+                   testThing m
+
+
+movePaddle :: Board -> Board -> Int
+movePaddle currentBoard nextBoard
+  | xPaddle < xBall = 1
+  | xPaddle > xBall = -1
+  | otherwise       = 0
+  where xPaddle = fst $ findPaddle currentBoard
+        xBall   = fst $ findBall nextBoard
 
 -- runGame :: Machine -> IO ()
 -- runGame mach = do let nextoc = nextOpCode mach
@@ -117,7 +150,7 @@ thirteen = do mem <- getInput "./input"
               -- let machFreePlay  = Machine (S.update 0 2 mem) 0 ([1, 1, 1] ++ [0,0..]) [] 0
               -- print $ take 3 $ reverse $ outBuffer $ execute machFreePlay
               -- runGame $ machFreePlay
-              runWithInput mem $ [1] ++ repeat 0
+              runWithInput mem []
 
 
 
