@@ -7,6 +7,7 @@ import Data.List.Split (chunksOf)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
+import Data.Map.Merge.Strict
 
 type Point = (Int, Int)
 data Tile = Empty | Wall | Block | Paddle | Ball deriving (Show, Eq)
@@ -72,21 +73,42 @@ sc = print . scoreBoard . outBuffer
 flushOutput :: Machine -> Machine
 flushOutput (Machine m p ib ob r) = Machine m p ib [] r
 
-runGame :: Machine -> IO ()
-runGame mach = do let nextoc = nextOpCode mach
-                  case nextoc of
-                    IN  -> do display mach
-                              runGame $ step mach
-                    HLT -> display mach >> sc mach
-                    _   -> runGame $ step mach
+runGame :: Machine -> Board -> IO ()
+runGame mach board = do let nextoc = nextOpCode mach
+                        case nextoc of
+                          IN  -> do let changes = buildBoard $ outBuffer mach
+                                    let newB = updateBoard changes board
+                                    putStrLn $ displayBoard newB
+                                    -- print $ scoreBoard $ outBuffer mach
+                                    print $ outBuffer mach
+                                    let newMach = flushOutput $ step mach
+                                    runGame newMach newB
+                          HLT  -> do let changes = buildBoard $ outBuffer mach
+                                     let newB = updateBoard changes board
+                                     putStrLn $ displayBoard newB
+                                     -- print $ scoreBoard $ outBuffer mach
+                          _   -> runGame (step mach) board
+
+-- runGame :: Machine -> IO ()
+-- runGame mach = do let nextoc = nextOpCode mach
+                  -- case nextoc of
+                    -- IN  -> do display mach
+                              -- runGame $ step mach
+                    -- HLT -> display mach >> sc mach
+                    -- _   -> runGame $ step mach
 
 -- Welp. Reading reddit tells me that the output at later steps is ONLY the
 -- squares that are updated. So just need to update the board. Tough to figure
 -- this out...
 
+updateBoard :: Board -> Board -> Board
+updateBoard newBoard oldBoard = unionWithKey (\ _ c1 _ -> c1) newBoard oldBoard
+  where unionWithKey f = merge preserveMissing preserveMissing (zipWithMatched f)
+
 
 runWithInput :: Memory -> [Int] -> IO()
-runWithInput memo inp = runGame (Machine (S.update 0 2 memo) 0 inp [] 0)
+runWithInput memo inp = runGame (Machine (S.update 0 2 memo) 0 inp [] 0) initBoard
+  where initBoard = buildBoard $ outBuffer $ execute (Machine memo 0 [] [] 0)
 
 thirteen :: IO ()
 thirteen = do mem <- getInput "./input"
