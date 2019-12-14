@@ -52,60 +52,51 @@ displayBoard board = unlines $
                      chunksOf (boardWidth board) $
                      M.toAscList
                      board
-
--- A hack: for some reason, after stepping the machine, my board is missing the
--- first few tiles. Let's try a hack!
-
-fixBoard :: Board -> Board
-fixBoard = M.union (M.fromList [((0,0), Wall), ((0,1), Wall), ((0,2), Wall)])
-
                   
 
 answer1 :: Memory -> Int
 answer1 mem = M.size $ M.filter (== Block) board
   where buff = outBuffer $ execute (Machine mem 0 [] [] 0)
         board = buildBoard buff
+
+findBall :: Board -> Board
+findBall = M.filter (==Ball)
                  
 
 inputToBuffer :: Machine -> Buffer -> Machine
 inputToBuffer (Machine m p _ ob r) b = Machine m p b ob r
  
-disp = putStrLn . displayBoard . buildBoard . outBuffer
+display = putStrLn . displayBoard . buildBoard . outBuffer
+sc = print . scoreBoard . outBuffer
 
+flushOutput :: Machine -> Machine
+flushOutput (Machine m p ib ob r) = Machine m p ib [] r
 
 runGame :: Machine -> IO ()
-runGame mach   
-  | nextOpCode mach == IN = do disp mach;
-                                      runGame (step mach) 
-  | nextOpCode mach == HLT = disp mach
-  | otherwise              = runGame (step mach) 
+runGame mach = do let nextoc = nextOpCode mach
+                  case nextoc of
+                    IN  -> do display mach
+                              runGame $ step mach
+                    HLT -> display mach >> sc mach
+                    _   -> runGame $ step mach
+
+-- Welp. Reading reddit tells me that the output at later steps is ONLY the
+-- squares that are updated. So just need to update the board. Tough to figure
+-- this out...
+
+
+runWithInput :: Memory -> [Int] -> IO()
+runWithInput memo inp = runGame (Machine (S.update 0 2 memo) 0 inp [] 0)
 
 thirteen :: IO ()
 thirteen = do mem <- getInput "./input"
               -- print $ answer1 mem
-              -- disp $ execute (Machine mem 0 [] [] 0)
-              let machFreePlay  = Machine (S.update 0 2 mem) 0 ([-1,-1,-1,-1,-1] ++ [0,0..]) [] 0
+              -- print $ length $ outBuffer $ execute (Machine mem 0 [] [] 0)
+              -- let machFreePlay  = Machine (S.update 0 2 mem) 0 ([1, 1, 1] ++ [0,0..]) [] 0
               -- print $ take 3 $ reverse $ outBuffer $ execute machFreePlay
-              runGame $ machFreePlay
+              -- runGame $ machFreePlay
+              runWithInput mem $ [1] ++ repeat 0
 
 
--- The game didn't run because you didn't put in any quarters.  Unfortunately,
--- you did not bring any quarters. Memory address 0 represents the number of
--- quarters that have been inserted; set it to 2 to play for free.
 
--- The arcade cabinet has a joystick that can move left and right.  The software
--- reads the position of the joystick with input instructions:
 
--- If the joystick is in the neutral position, provide 0.  If the joystick is
--- tilted to the left, provide -1.  If the joystick is tilted to the right,
--- provide 1.
-
--- The arcade cabinet also has a segment display capable of showing a single
--- number that represents the player's current score. When three output
--- instructions specify X=-1, Y=0, the third output instruction is not a tile;
--- the value instead specifies the new score to show in the segment display. For
--- example, a sequence of output values like -1,0,12345 would show 12345 as the
--- player's current score.
-
--- Beat the game by breaking all the blocks. What is your score after the last
--- block is broken?
