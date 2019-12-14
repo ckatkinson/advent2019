@@ -39,9 +39,8 @@ buildBoard _ = M.empty
 
 scoreBoard :: Buffer -> Int
 scoreBoard [] = 0
-scoreBoard (y:x:score:bs)
-  | y == -1   = score
-  | otherwise = scoreBoard bs
+scoreBoard ((-1):0:score:bs) = score
+scoreBoard (y:x:z:bs) = scoreBoard bs
 
 
 boardWidth :: Board -> Int
@@ -68,7 +67,7 @@ findPaddle b = head $ M.keys $ M.filter (==Paddle) b
                  
 
 inputBuffer :: Buffer -> Machine -> Machine
-inputBuffer b (Machine m p _ ob r) = Machine m p b ob r
+inputBuffer b (Machine m p b1 ob r) = Machine m p (b1 ++ b) ob r
  
 display = putStrLn . displayBoard . buildBoard . outBuffer
 sc = print . scoreBoard . outBuffer
@@ -76,42 +75,22 @@ sc = print . scoreBoard . outBuffer
 flushOutput :: Machine -> Machine
 flushOutput (Machine m p ib ob r) = Machine m p ib [] r
 
+updatePointer :: Machine -> Pointer -> Machine
+updatePointer (Machine m _ ib ob r) p = Machine m p ib ob r
+
+
+-- TODO: Figure out what's going on here. Why doesn't the paddle move correctly?
 runGame :: Machine -> Board -> IO ()
 runGame mach board  
-  | nextOpCode mach == IN =  do putStrLn $ displayBoard newB
+  | nextOpCode mach == IN =  do print $ scoreBoard $ outBuffer mach
                                 runGame newMach newB
-  | nextOpCode mach == HLT = putStrLn $ displayBoard newB
-                                -- print $ scoreBoard $ outBuffer mach
+  | nextOpCode mach == HLT = do putStrLn $ displayBoard newB
+                                runGame (inputBuffer [0] $ updatePointer mach 4) board
   | otherwise              = runGame (step mach) board
     where changes = buildBoard $ outBuffer mach
           newB = updateBoard changes board
           move = movePaddle board newB
-          newMach = flushOutput $ step $ inputBuffer [move] mach
-
--- runGame :: Machine -> Board -> IO ()
--- runGame mach board = do let nextoc = nextOpCode mach
-                        -- case nextoc of
-                          -- IN  -> do let changes = buildBoard $ outBuffer mach
-                                    -- let newB = updateBoard changes board
-                                    -- putStrLn $ displayBoard newB
-                                    -- -- print $ scoreBoard $ outBuffer mach
-                                    -- -- print $ outBuffer mach
-                                    -- let move = movePaddle board newB
-                                    -- let newMach =  flushOutput $ step $ inputBuffer [move] mach
-                                    -- runGame newMach newB
-                          -- HLT  -> do let changes = buildBoard $ outBuffer mach
-                                     -- let newB = updateBoard changes board
-                                     -- putStrLn $ displayBoard newB
-                                     -- -- print $ scoreBoard $ outBuffer mach
-                          -- _   -> runGame (step mach) board
-
-testThing :: Int -> IO ()
-testThing n 
-  | n == 0  = putStrLn "Zero!"
-  | otherwise = do putStrLn "Subracting one!"
-                   let m = n - 1
-                   print m
-                   testThing m
+          newMach = flushOutput $ step $ inputBuffer (0:[move]) mach
 
 
 movePaddle :: Board -> Board -> Int
@@ -119,20 +98,9 @@ movePaddle currentBoard nextBoard
   | xPaddle < xBall = 1
   | xPaddle > xBall = -1
   | otherwise       = 0
-  where xPaddle = fst $ findPaddle currentBoard
-        xBall   = fst $ findBall nextBoard
+  where xPaddle = snd $ findPaddle currentBoard
+        xBall   = snd $ findBall nextBoard
 
--- runGame :: Machine -> IO ()
--- runGame mach = do let nextoc = nextOpCode mach
-                  -- case nextoc of
-                    -- IN  -> do display mach
-                              -- runGame $ step mach
-                    -- HLT -> display mach >> sc mach
-                    -- _   -> runGame $ step mach
-
--- Welp. Reading reddit tells me that the output at later steps is ONLY the
--- squares that are updated. So just need to update the board. Tough to figure
--- this out...
 
 updateBoard :: Board -> Board -> Board
 updateBoard newBoard oldBoard = unionWithKey (\ _ c1 _ -> c1) newBoard oldBoard
@@ -150,7 +118,7 @@ thirteen = do mem <- getInput "./input"
               -- let machFreePlay  = Machine (S.update 0 2 mem) 0 ([1, 1, 1] ++ [0,0..]) [] 0
               -- print $ take 3 $ reverse $ outBuffer $ execute machFreePlay
               -- runGame $ machFreePlay
-              runWithInput mem []
+              runWithInput mem (repeat 0)
 
 
 
