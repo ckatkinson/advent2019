@@ -85,53 +85,44 @@ flushOutput (Machine m p ib ob r) = Machine m p ib [] r
 updatePointer :: Machine -> Pointer -> Machine
 updatePointer (Machine m _ ib ob r) p = Machine m p ib ob r
 
+nextMove :: Machine -> Board -> Int
+nextMove mach board
+  | nextOpCode mach == IN = move 
+  | otherwise             = nextMove (step mach) board
+    where changes = buildBoard $ outBuffer mach
+          newB = updateBoard changes board
+          move = fromMaybe 0 $ movePaddle newB newB
+
 
 -- TODO: Figure out what's going on here. Why doesn't the paddle move correctly?
 runGame :: Machine -> Board -> IO ()
 runGame mach board  
   | nextOpCode mach == IN =  if score /= 0
                                then do print score
-                                       -- print $ nextOpCode (step mach)
-                                       -- print $ take 5 $ inBuffer mach
-                                       -- print $ pointer mach
-                                       putStrLn $ displayBoard newB
-                                       -- print $ findPaddle board
-                                       -- print $ findBall board
-                                       -- print $ take 5 $ inBuffer newMach
-                                       -- putStrLn "Here"
-                                       -- print $ memory newMach
-                                       -- print $ pointer newMach
-                                       -- print $ outBuffer newMach
+                                       --putStrLn $ displayBoard newB
                                        runGame newMach newB
-                               else do putStrLn $ displayBoard newB
-                                       -- print $ memory newMach
-                                       -- print $ pointer newMach
-                                       -- print $ outBuffer newMach
+                               else do --putStrLn $ displayBoard newB
                                        runGame newMach newB
 
   | nextOpCode mach == HLT = do putStrLn "HLT"
-                                -- print $ take 5 $ inBuffer mach
-                                -- putStrLn $ displayBoard newB
-                                -- print $ findPaddle board
-                                -- print $ findBall board
-                                -- runGame (updatePointer mach 0) board
-  | otherwise              = do -- putStrLn "ow"
-                                -- print $ take 5 $ inBuffer mach
-                                runGame (step mach) board
+                                runGame (updatePointer mach 0) board
+  | otherwise              = do runGame (step mach) board
     where changes = buildBoard $ outBuffer mach
           newB = updateBoard changes board
-          move = movePaddle newB newB
+          nextNewB = updateBoard (buildBoard $ outBuffer newMach) newB
+          move = fromMaybe 1 $ movePaddle newB newB
           newMach = flushOutput $ step $ inputBuffer move mach
           score = scoreBoard $ outBuffer mach
 
 
-movePaddle :: Board -> Board -> Int
-movePaddle currentBoard nextBoard
-  | xPaddle < xBall = 1
-  | xPaddle > xBall = -1
-  | otherwise       = 0
-  where xPaddle = snd $ (fromMaybe (0,0) $ findPaddle currentBoard)
-        xBall   = snd $ (fromMaybe (0,0) $ findBall nextBoard)
+movePaddle :: Board -> Board -> Maybe Int
+movePaddle board board1
+  | xPaddle < xBall  = Just 1
+  | xPaddle > xBall  = Just $ -1
+  | xPaddle == xBall = Just 0
+  | otherwise        = Nothing
+  where xPaddle = snd <$> findPaddle board
+        xBall   = snd <$> findBall board1
 
 
 updateBoard :: Board -> Board -> Board
@@ -148,7 +139,7 @@ thirteen = do mem <- getInput "./input"
               let initBoard = buildBoard $ outBuffer $ execute (Machine mem 0 [] [] 0)
               -- print $ answer1 mem
               -- print $ length $ outBuffer $ execute (Machine mem 0 [] [] 0)
-              let machFreePlay  = Machine (S.update 0 2 mem) 0 (repeat 0) [] 0
+              let machFreePlay  = Machine (S.update 0 2 mem) 0 [] [] 0
               -- print $ take 3 $ reverse $ outBuffer $ execute machFreePlay
               -- runWithInput mem (replicate 1 23)
               runGame machFreePlay initBoard
