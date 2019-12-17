@@ -4,6 +4,7 @@ module Lib
 
 import Data.Map.Strict (Map, (!?))
 import qualified Data.Map.Strict as M
+import Data.Maybe
 import Data.List.Split
 
 
@@ -12,7 +13,11 @@ data Ingredient =
   { name   :: String
   , amount :: Int } deriving (Show, Eq, Ord)
 
+type Substance = String
+
 type Recipe     = Map Ingredient [Ingredient]
+
+type Supplies   = Map String Int
 
 getInput :: FilePath -> IO Recipe
 getInput path = do 
@@ -26,12 +31,34 @@ getInput path = do
   readIngs [] = []
   readIngs (amt:nm:rest) = Ingredient nm (read amt) : readIngs rest
 
+getRecipeFor :: Substance -> Recipe -> Recipe
+getRecipeFor sub = M.filterWithKey (\k _ -> (name k == sub))
+
+
+addSupplies :: Supplies -> Ingredient -> Supplies
+addSupplies sup ingred = M.insertWith (+) (name ingred) (amount ingred) sup
+
+useSupplies :: Supplies -> Ingredient -> Maybe Supplies
+useSupplies sup (Ingredient n amt) =
+  if n `M.member` sup && amt <= amtStored
+    then Just (addSupplies sup (Ingredient n (-1 * amt)))
+    else Nothing
+  where amtStored = fromJust $ sup !? n
+
+
+-- This gives answers that are too high. The reason is that it is not taking
+-- into account "Wasted" product. I guess we need like a bank to draw from?
 oreToMakeIng :: Recipe -> Ingredient -> Int
 oreToMakeIng _ (Ingredient "ORE" n) = n
-oreToMakeIng rec (Ingredient element num) = undefined
-
+oreToMakeIng rec (Ingredient element num) = 
+  sum $ map (\ (Ingredient el nel) -> oreToMakeIng rec (Ingredient el (numRecipes num * nel)))
+            toMake
+  where elementRec = getRecipeFor element rec
+        numRecipes num = ((num - 1) `quot` amt) + 1
+        amt = amount $ head $ M.keys elementRec
+        toMake = head $ M.elems elementRec
 
 
 fourteen :: IO ()
 fourteen = do recipe <- getInput "./input"
-              print $ oreToMakeIng recipe (Ingredient "ORE" 5)
+              print $ oreToMakeIng recipe (Ingredient "FUEL" 1)
