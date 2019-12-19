@@ -48,17 +48,20 @@ useSupplies sup (Ingredient n amt) =
 
 -- This gives answers that are too high. The reason is that it is not taking
 -- into account "Wasted" product. I guess we need like a bank to draw from?
-oreToMakeIng :: Recipe -> Ingredient -> Int
-oreToMakeIng _ (Ingredient "ORE" n) = n
-oreToMakeIng rec (Ingredient element num) = 
-  sum $ map (\ (Ingredient el nel) -> oreToMakeIng rec (Ingredient el (numRecipes num * nel)))
-            toMake
+oreToMakeIng :: Recipe -> Supplies -> Ingredient -> (Int, Supplies)
+oreToMakeIng _ s (Ingredient "ORE" n) = (n, s)
+oreToMakeIng rec sup ing@(Ingredient element num)
+  | isNothing (useSupplies sup ing) = oreToMakeIng rec (addSupplies sup ing) ing
+  | otherwise  = 
+      (sum $ map (\ (Ingredient el nel) -> fst $ oreToMakeIng rec (fromJust $ useSupplies sup ing) (Ingredient el (numRecipes num * nel)))
+        toMake, (fromJust $ useSupplies sup ing))
   where elementRec = getRecipeFor element rec
         numRecipes num = ((num - 1) `quot` amt) + 1
         amt = amount $ head $ M.keys elementRec
         toMake = head $ M.elems elementRec
 
 
+
 fourteen :: IO ()
-fourteen = do recipe <- getInput "./input"
-              print $ oreToMakeIng recipe (Ingredient "FUEL" 1)
+fourteen = do recipe <- getInput "./testinput"
+              print $ oreToMakeIng recipe M.empty (Ingredient "FUEL" 1)
